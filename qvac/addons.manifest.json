@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "bundleId": "b6e89d379b11546442e57e16b479aa745e8f3c318db4f62dafbda30010085c91",
+  "bundleId": "e3553d47b6c76f910ef5abac1da9f6892af2cb88b9aae4def5fd3a4e01db1d88",
   "addons": [
     "@qvac/llm-llamacpp",
     "bare-abort",

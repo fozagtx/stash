@@ -36,6 +36,9 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# local agent metadata
+.serena/
+
 # build artifacts
 *.apk
 *.aab

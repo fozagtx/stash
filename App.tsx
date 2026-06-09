@@ -1,505 +1,582 @@
+import { BlurTargetView, BlurView } from "expo-blur";
 import { StatusBar } from "expo-status-bar";
 import {
   ActivityIndicator,
+  Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
+  StatusBar as NativeStatusBar,
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
-import { Icon } from "./src/components/Icon";
-import { OfflineMap } from "./src/components/OfflineMap";
-import { runLocalQuery } from "./src/lib/spatial";
-import { initializeQvac, runQvacQuery, shutdownQvac } from "./src/lib/qvac";
-import type { QvacState, SpatialResult } from "./src/types";
+import { initializeQvac, runQvacPrompt, shutdownQvac } from "./src/lib/qvac";
+import type { QvacState } from "./src/types";
 
-const SAMPLE_QUERIES = [
-  "Find nearest hospital to Camp 6",
-  "List pharmacies within 2km of Condado",
-  "Find nearest shelter to Camp 3",
-  "Where is Puerta de Tierra?",
-];
+const EMPTY_PROMPT = "";
+const LOGO_IMAGE = require("./assets/icon.png");
 
-const initialQuery = SAMPLE_QUERIES[0];
+type GlassPanelProps = {
+  blurTarget: RefObject<View | null>;
+  children: ReactNode;
+  contentStyle?: StyleProp<ViewStyle>;
+  intensity?: number;
+  style?: StyleProp<ViewStyle>;
+};
+
+function GlassPanel({ blurTarget, children, contentStyle, intensity = 36, style }: GlassPanelProps) {
+  const blurMethod = Platform.OS === "android" ? "dimezisBlurView" : undefined;
+
+  return (
+    <View style={[styles.glassShell, style]}>
+      <BlurView
+        blurTarget={blurTarget}
+        blurMethod={blurMethod}
+        blurReductionFactor={2}
+        intensity={intensity}
+        tint="dark"
+        style={styles.glassBlur}
+      >
+        <View pointerEvents="none" style={styles.edgeLight} />
+        <View pointerEvents="none" style={styles.specularSweep} />
+        <View style={[styles.glassContent, contentStyle]}>{children}</View>
+      </BlurView>
+    </View>
+  );
+}
 
 export default function App() {
   const [qvac, setQvac] = useState<QvacState>({
     modelId: null,
     status: "idle",
-    message: "Starting local runtime",
+    message: "Not started",
     progress: null,
   });
-  const [input, setInput] = useState(initialQuery);
-  const [result, setResult] = useState<SpatialResult>(() => runLocalQuery(initialQuery));
-  const [busy, setBusy] = useState(false);
+  const [prompt, setPrompt] = useState(EMPTY_PROMPT);
+  const [output, setOutput] = useState("");
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
   const modelIdRef = useRef<string | null>(null);
+  const blurTargetRef = useRef<View | null>(null);
+  const questionInputRef = useRef<TextInput | null>(null);
 
-  const statusTone = useMemo(() => {
-    if (qvac.status === "ready") return styles.statusReady;
-    if (qvac.status === "error") return styles.statusError;
-    return styles.statusWorking;
-  }, [qvac.status]);
+  const loadingModel = qvac.status === "downloading" || qvac.status === "loading";
+  const canRun = qvac.status === "ready" && prompt.trim().length > 0 && !running;
+  const canEditPrompt = qvac.status === "ready" && !running;
+  const showStartPanel = qvac.status !== "ready";
+  const progressValue = qvac.status === "ready" ? 100 : Math.max(0, Math.min(100, qvac.progress ?? 0));
+  const startPanelTitle = qvac.status === "error" ? "Try again" : loadingModel ? "Starting assistant" : "Start assistant";
+  const startPanelMessage =
+    qvac.status === "error"
+      ? "Could not start. Check storage and connection, then try again."
+      : loadingModel
+        ? qvac.message
+        : "Tap Start once before asking.";
 
   useEffect(() => {
-    let alive = true;
-    void initializeQvac((state) => {
-      if (!alive) return;
-      modelIdRef.current = state.modelId;
-      setQvac(state);
-    }).then((modelId) => {
-      modelIdRef.current = modelId;
-    });
+    const blurTimer = setTimeout(() => {
+      questionInputRef.current?.blur();
+      Keyboard.dismiss();
+    }, 250);
 
     return () => {
-      alive = false;
+      clearTimeout(blurTimer);
       void shutdownQvac(modelIdRef.current);
     };
   }, []);
 
-  async function submitQuery(nextQuery = input) {
-    const trimmed = nextQuery.trim();
-    if (!trimmed || busy) return;
+  useEffect(() => {
+    const blurTimer = setTimeout(() => {
+      questionInputRef.current?.blur();
+      Keyboard.dismiss();
+    }, 120);
 
-    setInput(trimmed);
-    setBusy(true);
+    return () => clearTimeout(blurTimer);
+  }, [qvac.status]);
+
+  async function loadModel() {
+    if (loadingModel || qvac.status === "ready") return;
+
+    setRunError(null);
     try {
-      setResult(await runQvacQuery(modelIdRef.current, trimmed));
+      const modelId = await initializeQvac((state) => {
+        modelIdRef.current = state.modelId;
+        setQvac(state);
+      });
+      modelIdRef.current = modelId;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setQvac({
+        modelId: null,
+        status: "error",
+        message,
+        progress: null,
+      });
+    }
+  }
+
+  async function submitPrompt() {
+    const trimmed = prompt.trim();
+    if (!trimmed || running) return;
+    if (!modelIdRef.current) {
+      setRunError("Start first.");
+      return;
+    }
+
+    setRunning(true);
+    setOutput("");
+    setRunError(null);
+
+    try {
+      const result = await runQvacPrompt(modelIdRef.current, trimmed, setOutput);
+      setOutput(result.text);
+    } catch (error) {
+      setRunError("Could not answer. Try again.");
     } finally {
-      setBusy(false);
+      setRunning(false);
     }
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="dark" />
-      <KeyboardAvoidingView
-        style={styles.keyboard}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.header}>
-            <View style={styles.brandBlock}>
-              <Text style={styles.eyebrow}>QVAC EDGE AI</Text>
-              <Text style={styles.title}>FieldMeridian</Text>
-              <Text style={styles.subtitle}>Offline spatial queries for field teams.</Text>
-            </View>
-            <View style={[styles.statusPill, statusTone]}>
-              {qvac.status === "ready" ? <Icon name="shield-check" size={15} color="#FFFFFF" /> : null}
-              {qvac.status !== "ready" && qvac.status !== "error" ? (
-                <ActivityIndicator size="small" color="#2C2B27" />
-              ) : null}
-              <Text style={[styles.statusText, qvac.status === "ready" ? styles.statusTextReady : null]}>
-                {qvac.status === "ready" ? "QVAC ready" : qvac.status === "error" ? "Local fallback" : "Loading"}
-              </Text>
-            </View>
-          </View>
+    <View style={styles.root}>
+      <BlurTargetView ref={blurTargetRef} style={StyleSheet.absoluteFill}>
+        <View style={styles.backdrop} />
+        <View style={styles.topPlane} />
+        <View style={styles.copperPlane} />
+        <View style={styles.greenPlane} />
+        <View style={styles.horizonLine} />
+        <View style={styles.gridLineOne} />
+        <View style={styles.gridLineTwo} />
+      </BlurTargetView>
 
-          <View style={styles.proofRow}>
-            <View style={styles.proofItem}>
-              <Icon name="wifi-off" size={17} color="#2E5E47" />
-              <Text style={styles.proofText}>Zero cloud query path</Text>
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar style="light" />
+        <KeyboardAvoidingView
+          style={styles.keyboard}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <View style={styles.header}>
+              <View style={styles.brandRow}>
+                <Image
+                  source={LOGO_IMAGE}
+                  style={styles.logoMark}
+                  resizeMode="cover"
+                  accessibilityLabel="FieldMeridian logo"
+                />
+                <View style={styles.brandBlock}>
+                  <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>
+                    FieldMeridian
+                  </Text>
+                  <Text style={styles.subtitle}>Ask in the field. Answers stay on this phone.</Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.proofItem}>
-              <Icon name="cpu" size={17} color="#8C4F18" />
-              <Text style={styles.proofText}>{qvac.message}</Text>
-            </View>
-          </View>
 
-          <OfflineMap result={result} />
+            {showStartPanel ? (
+              <GlassPanel blurTarget={blurTargetRef}>
+                <View style={styles.modelHeader}>
+                  <View style={styles.modelCopy}>
+                    <Text style={styles.panelKicker}>START</Text>
+                    <Text style={styles.modelName} numberOfLines={1} adjustsFontSizeToFit>
+                      {startPanelTitle}
+                    </Text>
+                    <Text style={styles.modelMeta}>{startPanelMessage}</Text>
+                  </View>
+                </View>
 
-          <View style={styles.queryPanel}>
-            <View style={styles.inputWrap}>
-              <Icon name="search" size={19} color="#5A554D" />
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                onSubmitEditing={() => submitQuery()}
-                returnKeyType="search"
-                placeholder="Ask a local spatial question"
-                placeholderTextColor="#7B7468"
-                style={styles.input}
-                editable={!busy}
-              />
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Run spatial query"
-              style={({ pressed }) => [styles.runButton, pressed ? styles.pressed : null]}
-              onPress={() => submitQuery()}
-              disabled={busy}
-            >
-              {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon name="route" size={18} color="#FFFFFF" />}
-              <Text style={styles.runButtonText}>{busy ? "Running" : "Run"}</Text>
-            </Pressable>
-          </View>
+                {loadingModel ? (
+                  <>
+                    <View style={styles.progressHeader}>
+                      <Text style={styles.progressLabel}>{qvac.message}</Text>
+                      <Text style={styles.progressValue}>{Math.round(progressValue)}%</Text>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${progressValue}%` }]} />
+                    </View>
+                  </>
+                ) : null}
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.samples}
-          >
-            {SAMPLE_QUERIES.map((query) => (
+                <View style={styles.modelActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Start assistant"
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      loadingModel ? styles.disabledButton : null,
+                      pressed ? styles.pressed : null,
+                    ]}
+                    onPress={loadModel}
+                    disabled={loadingModel}
+                  >
+                    {loadingModel ? <ActivityIndicator size="small" color="#F7FBF5" /> : null}
+                    <Text style={styles.primaryButtonText}>
+                      {qvac.status === "error" ? "Try again" : loadingModel ? "Starting" : "Start"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </GlassPanel>
+            ) : null}
+
+            <GlassPanel blurTarget={blurTargetRef} contentStyle={styles.promptContent}>
+              <View style={styles.inputBlock}>
+                <Text style={styles.panelKicker}>ASK</Text>
+                <TextInput
+                  ref={questionInputRef}
+                  value={prompt}
+                  onChangeText={setPrompt}
+                  placeholder="Type your question"
+                  placeholderTextColor="#7A8378"
+                  style={[styles.promptInput, !canEditPrompt ? styles.disabledInput : null]}
+                  multiline
+                  textAlignVertical="top"
+                  editable={canEditPrompt}
+                />
+              </View>
               <Pressable
                 accessibilityRole="button"
-                key={query}
-                style={({ pressed }) => [styles.sampleButton, pressed ? styles.pressed : null]}
-                onPress={() => submitQuery(query)}
+                accessibilityLabel="Ask question"
+                style={({ pressed }) => [
+                  styles.runButton,
+                  !canRun ? styles.disabledButton : null,
+                  pressed ? styles.pressed : null,
+                ]}
+                onPress={submitPrompt}
+                disabled={!canRun}
               >
-                <Text style={styles.sampleButtonText}>{query}</Text>
+                {running ? <ActivityIndicator size="small" color="#F7FBF5" /> : null}
+                <Text style={styles.runButtonText}>{running ? "Working" : "Ask"}</Text>
               </Pressable>
-            ))}
-          </ScrollView>
+              {runError ? <Text style={styles.errorInline}>{runError}</Text> : null}
+            </GlassPanel>
 
-          <View style={styles.resultPanel}>
-            <View style={styles.resultHeader}>
-              <View style={styles.resultIcon}>
-                <Icon name="map-pin" size={18} color="#FFFFFF" />
+            <GlassPanel blurTarget={blurTargetRef} contentStyle={styles.outputContent}>
+              <View style={styles.outputHeader}>
+                <Text style={styles.panelKicker}>ANSWER</Text>
               </View>
-              <View style={styles.resultTitleBlock}>
-                <Text style={styles.resultTitle}>{result.title}</Text>
-                <Text style={styles.resultSubtitle}>{result.summary}</Text>
-              </View>
-            </View>
-
-            {result.route ? (
-              <View style={styles.metricsRow}>
-                <View style={styles.metric}>
-                  <Text style={styles.metricValue}>{result.route.durationMinutes} min</Text>
-                  <Text style={styles.metricLabel}>walking</Text>
-                </View>
-                <View style={styles.metric}>
-                  <Text style={styles.metricValue}>{Math.round(result.route.distanceMeters)} m</Text>
-                  <Text style={styles.metricLabel}>route</Text>
-                </View>
-                <View style={styles.metric}>
-                  <Text style={styles.metricValue}>{result.markers.length}</Text>
-                  <Text style={styles.metricLabel}>markers</Text>
-                </View>
-              </View>
-            ) : null}
-
-            {result.route ? (
-              <View style={styles.steps}>
-                {result.route.steps.map((step, index) => (
-                  <View key={`${step.instruction}-${index}`} style={styles.step}>
-                    <View style={styles.stepIndex}>
-                      <Text style={styles.stepIndexText}>{index + 1}</Text>
-                    </View>
-                    <View style={styles.stepTextBlock}>
-                      <Text style={styles.stepInstruction}>{step.instruction}</Text>
-                      <Text style={styles.stepDistance}>{Math.round(step.distanceMeters)} m</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </View>
-
-          <View style={styles.evidencePanel}>
-            <View style={styles.evidenceHeader}>
-              <Icon name="locate-fixed" size={17} color="#2C2B27" />
-              <Text style={styles.evidenceTitle}>Evidence</Text>
-            </View>
-            <Text style={styles.evidenceLine}>Tool: {result.toolName}</Text>
-            <Text style={styles.evidenceLine}>Mode: {result.mode === "qvac" ? "QVAC local inference" : "Local deterministic fallback"}</Text>
-            <Text style={styles.evidenceLine}>Bundle: {result.evidence.cityBundle}</Text>
-            <Text style={styles.evidenceLine}>Latency: {result.evidence.latencyMs} ms</Text>
-            {result.evidence.backendDevice ? (
-              <Text style={styles.evidenceLine}>Backend: {result.evidence.backendDevice}</Text>
-            ) : null}
-            {result.evidence.tokensPerSecond ? (
-              <Text style={styles.evidenceLine}>
-                Decode: {result.evidence.tokensPerSecond.toFixed(1)} tok/s
+              <Text style={output ? styles.outputText : styles.emptyOutput}>
+                {output || "Your answer will appear here."}
               </Text>
-            ) : null}
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            </GlassPanel>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: "#111713",
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: "#EFEAE1",
   },
   keyboard: {
     flex: 1,
   },
   content: {
+    gap: 16,
     paddingHorizontal: 18,
-    paddingBottom: 26,
-    gap: 14,
+    paddingTop: Platform.OS === "android" ? (NativeStatusBar.currentHeight ?? 0) + 20 : 18,
+    paddingBottom: 28,
+  },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "#111713",
+  },
+  topPlane: {
+    position: "absolute",
+    top: -60,
+    left: -48,
+    width: 520,
+    height: 210,
+    backgroundColor: "rgba(49, 120, 110, 0.38)",
+    transform: [{ rotate: "-11deg" }],
+  },
+  copperPlane: {
+    position: "absolute",
+    top: 165,
+    right: -130,
+    width: 340,
+    height: 160,
+    backgroundColor: "rgba(181, 103, 59, 0.28)",
+    transform: [{ rotate: "-18deg" }],
+  },
+  greenPlane: {
+    position: "absolute",
+    bottom: 80,
+    left: -105,
+    width: 360,
+    height: 180,
+    backgroundColor: "rgba(58, 126, 84, 0.22)",
+    transform: [{ rotate: "15deg" }],
+  },
+  horizonLine: {
+    position: "absolute",
+    top: 252,
+    left: 22,
+    right: 22,
+    height: 1,
+    backgroundColor: "rgba(239, 246, 233, 0.18)",
+  },
+  gridLineOne: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 82,
+    width: 1,
+    backgroundColor: "rgba(239, 246, 233, 0.08)",
+    transform: [{ rotate: "-7deg" }],
+  },
+  gridLineTwo: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: 86,
+    width: 1,
+    backgroundColor: "rgba(239, 246, 233, 0.08)",
+    transform: [{ rotate: "8deg" }],
   },
   header: {
-    paddingTop: 18,
-    flexDirection: "row",
     alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
     justifyContent: "space-between",
-    gap: 12,
+  },
+  brandRow: {
+    alignItems: "center",
+    flex: 1,
+    flexDirection: "row",
+    gap: 11,
+    minWidth: 0,
+  },
+  logoMark: {
+    backgroundColor: "rgba(235, 247, 255, 0.92)",
+    borderColor: "rgba(246, 255, 244, 0.28)",
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 54,
+    width: 54,
   },
   brandBlock: {
     flex: 1,
-  },
-  eyebrow: {
-    color: "#8C4F18",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0,
+    gap: 4,
+    minWidth: 0,
   },
   title: {
-    color: "#171714",
-    fontSize: 34,
+    color: "#F7FBF5",
+    fontSize: 32,
     fontWeight: "900",
     letterSpacing: 0,
-    lineHeight: 38,
+    lineHeight: 36,
   },
   subtitle: {
-    color: "#514C44",
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 4,
+    color: "#C8D2C4",
+    fontSize: 16,
+    fontWeight: "500",
+    lineHeight: 22,
+    maxWidth: 260,
   },
-  statusPill: {
-    minHeight: 34,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    borderWidth: 1,
-  },
-  statusReady: {
-    backgroundColor: "#2E5E47",
-    borderColor: "#2E5E47",
-  },
-  statusWorking: {
-    backgroundColor: "#F6F1E8",
-    borderColor: "#CFC4B2",
-  },
-  statusError: {
-    backgroundColor: "#F8E7E0",
-    borderColor: "#C85F4E",
-  },
-  statusText: {
-    color: "#2C2B27",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  statusTextReady: {
-    color: "#FFFFFF",
-  },
-  proofRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  proofItem: {
-    flex: 1,
-    minHeight: 42,
+  glassShell: {
+    backgroundColor: "rgba(239, 246, 233, 0.08)",
+    borderColor: "rgba(246, 255, 244, 0.22)",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#D2C6B3",
-    backgroundColor: "#F9F5EE",
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    elevation: 7,
+    overflow: "hidden",
+    shadowColor: "#07100C",
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.28,
+    shadowRadius: 28,
   },
-  proofText: {
-    flex: 1,
-    color: "#3A362F",
-    fontSize: 12,
-    fontWeight: "700",
+  glassBlur: {
+    overflow: "hidden",
   },
-  queryPanel: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+  glassContent: {
+    gap: 14,
+    padding: 16,
   },
-  inputWrap: {
-    flex: 1,
-    height: 50,
+  edgeLight: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderColor: "rgba(255, 255, 255, 0.22)",
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "#2C2B27",
-    backgroundColor: "#FFFDF8",
-    paddingHorizontal: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
   },
-  input: {
+  specularSweep: {
+    position: "absolute",
+    top: -34,
+    left: -70,
+    width: 180,
+    height: 90,
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    transform: [{ rotate: "-24deg" }],
+  },
+  modelHeader: {
+    flexDirection: "row",
+  },
+  modelCopy: {
     flex: 1,
-    minWidth: 0,
-    color: "#1C1B18",
-    fontSize: 15,
-    fontWeight: "600",
+    gap: 5,
   },
-  runButton: {
-    height: 50,
-    minWidth: 86,
-    borderRadius: 8,
-    backgroundColor: "#B44738",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 7,
-    paddingHorizontal: 13,
-  },
-  runButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
+  panelKicker: {
+    color: "#95BBA9",
+    fontSize: 11,
     fontWeight: "900",
+    letterSpacing: 1,
+  },
+  modelName: {
+    color: "#F7FBF5",
+    fontSize: 20,
+    fontWeight: "900",
+    letterSpacing: 0,
+    lineHeight: 25,
+  },
+  modelMeta: {
+    color: "#C3CEC0",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
+  },
+  progressHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
+  progressLabel: {
+    color: "#DDE7DA",
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  progressValue: {
+    color: "#F7FBF5",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  progressTrack: {
+    backgroundColor: "rgba(247, 251, 245, 0.13)",
+    borderRadius: 4,
+    height: 8,
+    overflow: "hidden",
+  },
+  progressFill: {
+    backgroundColor: "#7FCF9A",
+    borderRadius: 4,
+    height: "100%",
+  },
+  modelActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  primaryButton: {
+    alignItems: "center",
+    backgroundColor: "#2E7E57",
+    borderColor: "rgba(255, 255, 255, 0.18)",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 52,
+    paddingHorizontal: 14,
+  },
+  primaryButtonText: {
+    color: "#F7FBF5",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  disabledButton: {
+    opacity: 0.48,
+  },
+  disabledInput: {
+    opacity: 0.62,
   },
   pressed: {
-    opacity: 0.72,
+    opacity: 0.82,
+    transform: [{ translateY: 1 }],
   },
-  samples: {
-    gap: 8,
-    paddingRight: 18,
+  promptContent: {
+    gap: 14,
   },
-  sampleButton: {
-    minHeight: 38,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#B9AD9C",
-    backgroundColor: "#FBF7F0",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-  sampleButtonText: {
-    color: "#2F2D28",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  resultPanel: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#292824",
-    backgroundColor: "#FFFDF8",
-    padding: 14,
-    gap: 13,
-  },
-  resultHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 11,
-  },
-  resultIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    backgroundColor: "#2E5E47",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  resultTitleBlock: {
-    flex: 1,
-    gap: 4,
-  },
-  resultTitle: {
-    color: "#1C1B18",
-    fontSize: 19,
-    fontWeight: "900",
-    lineHeight: 23,
-  },
-  resultSubtitle: {
-    color: "#4D4840",
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: "600",
-  },
-  metricsRow: {
-    flexDirection: "row",
+  inputBlock: {
     gap: 9,
   },
-  metric: {
-    flex: 1,
+  promptInput: {
+    backgroundColor: "rgba(8, 15, 12, 0.54)",
+    borderColor: "rgba(247, 251, 245, 0.18)",
     borderRadius: 8,
-    backgroundColor: "#F1E9DB",
-    paddingVertical: 10,
-    paddingHorizontal: 10,
+    borderWidth: 1,
+    color: "#F7FBF5",
+    fontSize: 16,
+    fontWeight: "600",
+    lineHeight: 22,
+    minHeight: 118,
+    paddingHorizontal: 14,
+    paddingTop: 13,
+    paddingBottom: 13,
   },
-  metricValue: {
-    color: "#1F1D19",
+  runButton: {
+    alignItems: "center",
+    backgroundColor: "#B86C45",
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    minHeight: 52,
+  },
+  runButtonText: {
+    color: "#FFF8F2",
     fontSize: 17,
     fontWeight: "900",
   },
-  metricLabel: {
-    color: "#6A6257",
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  steps: {
-    gap: 9,
-  },
-  step: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  stepIndex: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: "#2C2B27",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepIndexText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-  stepTextBlock: {
-    flex: 1,
-    minWidth: 0,
-    borderBottomColor: "#E1D7C8",
-    borderBottomWidth: 1,
-    paddingBottom: 8,
-  },
-  stepInstruction: {
-    color: "#2A2823",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  stepDistance: {
-    color: "#746C5F",
-    fontSize: 12,
+  errorInline: {
+    color: "#FFD0C6",
+    fontSize: 13,
     fontWeight: "700",
-    marginTop: 2,
+    lineHeight: 19,
   },
-  evidencePanel: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#C9BCA8",
-    backgroundColor: "#F8F2E9",
-    padding: 13,
-    gap: 5,
+  outputContent: {
+    minHeight: 152,
   },
-  evidenceHeader: {
-    flexDirection: "row",
+  outputHeader: {
     alignItems: "center",
-    gap: 7,
-    marginBottom: 3,
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
-  evidenceTitle: {
-    color: "#2C2B27",
-    fontSize: 14,
-    fontWeight: "900",
+  outputText: {
+    color: "#F7FBF5",
+    fontSize: 16,
+    fontWeight: "600",
+    lineHeight: 23,
   },
-  evidenceLine: {
-    color: "#4D473D",
-    fontSize: 12,
-    lineHeight: 17,
+  emptyOutput: {
+    color: "#9DA99A",
+    fontSize: 16,
     fontWeight: "700",
+    lineHeight: 23,
   },
 });

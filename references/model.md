@@ -27,4 +27,4 @@ The model is downloaded by QVAC at runtime. It is not embedded inside the APK.
 - Device: `cpu`
 - Tool calling: enabled
 
-CPU inference was chosen because the app only needs local tool routing over a small offline spatial bundle. Shipping Vulkan/OpenCL GPU libraries made the APK much larger without being necessary for the demo path.
+CPU inference was chosen to keep the Android package smaller and avoid shipping Vulkan/OpenCL GPU libraries for the current QVAC-only prompt runner.

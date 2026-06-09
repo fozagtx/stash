@@ -8,7 +8,7 @@ android/app/build/outputs/apk/debug/app-debug.apk
 152 MB shown by ls -lh
 
 android/app/build/outputs/apk/release/app-release.apk
-141869485 bytes
+141854789 bytes
 135 MB shown by ls -lh
 ```
 

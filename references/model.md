@@ -3,20 +3,20 @@
 ## Active QVAC Model
 
 ```text
-LLAMA_3_2_1B_INST_Q4_0
+QWEN3_600M_INST_Q4
 ```
 
 This is the QVAC SDK registry asset used by the app:
 
 ```text
-registry://hf/unsloth/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_0.gguf
+registry://hf/unsloth/Qwen3-0.6B-GGUF/blob/50968a4468ef4233ed78cd7c3de230dd1d61a56b/Qwen3-0.6B-Q4_0.gguf
 ```
 
 ## Size
 
-- Registry size: `773025824` bytes
-- Decimal size: about `773 MB`
-- Binary size: about `737 MiB`
+- Registry size: `382156480` bytes
+- Decimal size: about `382 MB`
+- Binary size: about `364 MiB`
 
 The model is downloaded by QVAC at runtime. It is not embedded inside the APK.
 
@@ -25,6 +25,6 @@ The model is downloaded by QVAC at runtime. It is not embedded inside the APK.
 - Model type: `llm`
 - Context size: `2048`
 - Device: `cpu`
-- Tool calling: enabled
+- Tool calling: disabled
 
-CPU inference was chosen to keep the Android package smaller and avoid shipping Vulkan/OpenCL GPU libraries for the current QVAC-only prompt runner.
+CPU inference was chosen to keep the Android package smaller and avoid shipping Vulkan/OpenCL GPU libraries for the current on-device sorting layer.

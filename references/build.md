@@ -21,9 +21,9 @@ android/app/build/outputs/apk/release/app-release.apk
 ## Android Identity
 
 ```text
-applicationId: com.qvac.fieldmeridian
-label: FieldMeridian
-scheme: fieldmeridian
+applicationId: com.qvac.stash
+label: Stash
+scheme: stash
 ```
 
 ## Local Toolchain

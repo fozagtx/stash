@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.qvac.fieldmeridian'
+    namespace 'com.qvac.stash'
     defaultConfig {
-        applicationId 'com.qvac.fieldmeridian'
+        applicationId 'com.qvac.stash'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

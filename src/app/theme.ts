@@ -1,0 +1,18 @@
+export const colors = {
+  background: "#F8F6EE",
+  panel: "#FFFFFF",
+  panelStrong: "#F0EEE5",
+  panelSoft: "#FBFAF5",
+  stroke: "#DAD6CA",
+  strokeStrong: "#BEB8A9",
+  text: "#2D334F",
+  muted: "#676B7E",
+  faint: "#9B9A8E",
+  ink: "#11131F",
+  green: "#57C785",
+  greenDeep: "#2E8D60",
+  amber: "#FFC84D",
+  red: "#E85D55",
+  blue: "#355D9B",
+  white: "#FFFFFF",
+};

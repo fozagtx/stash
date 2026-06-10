@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "FieldMeridian",
-    "slug": "fieldmeridian",
-    "scheme": "fieldmeridian",
+    "name": "Stash",
+    "slug": "stash",
+    "scheme": "stash",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,7 +10,8 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.qvac.fieldmeridian",
+      "package": "com.qvac.stash",
+      "allowBackup": false,
       "permissions": [
         "android.permission.INTERNET"
       ],
@@ -21,7 +22,7 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#242A4C",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -40,7 +41,8 @@
           }
         }
       ],
-      "@qvac/sdk/expo-plugin"
+      "@qvac/sdk/expo-plugin",
+      "expo-font"
     ]
   }
 }

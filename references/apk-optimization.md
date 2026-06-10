@@ -29,7 +29,7 @@ The APK audit confirmed those GPU libraries are not present in the debug APK.
 
 ## Remaining Large Native Pieces
 
-These remain because they are tied to React Native, QVAC, Bare runtime, or the SVG UI:
+These remain because they are tied to React Native, QVAC, Bare runtime, or the app bundle:
 
 ```text
 63164720 lib/arm64-v8a/libbare-kit.so

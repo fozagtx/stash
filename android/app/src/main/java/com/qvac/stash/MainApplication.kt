@@ -1,4 +1,4 @@
-package com.qvac.fieldmeridian
+package com.qvac.stash
 
 import android.app.Application
 import android.content.res.Configuration
@@ -10,6 +10,7 @@ import com.facebook.react.ReactPackage
 import com.facebook.react.ReactHost
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
+import com.qvac.stash.share.ShareIntentPackage
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ExpoReactHostFactory
@@ -21,8 +22,7 @@ class MainApplication : Application(), ReactApplication {
       context = applicationContext,
       packageList =
         PackageList(this).packages.apply {
-          // Packages that cannot be autolinked yet can be added manually here, for example:
-          // add(MyReactNativePackage())
+          add(ShareIntentPackage())
         }
     )
   }

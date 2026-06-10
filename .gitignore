@@ -38,6 +38,9 @@ yarn-error.*
 
 # local agent metadata
 .serena/
+.claude/
+.codex/
+CLAUDE.md
 
 # build artifacts
 *.apk

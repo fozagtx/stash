@@ -1,6 +1,6 @@
 # Stash
 
-Stash is a private Android save-and-find app. It captures links, notes, copied text, receipt snippets, research fragments, and shared text from other apps, then keeps them searchable on the phone.
+Stash is a QVAC-powered private Android save-and-find app. It captures links, notes, copied text, receipt snippets, research fragments, and shared text from other apps, then keeps them searchable on the phone.
 
 ## Screenshots
 
@@ -12,12 +12,12 @@ Stash is a private Android save-and-find app. It captures links, notes, copied t
 
 ## Product Aim
 
+- Use QVAC as the on-device organizer for summaries, tags, and basket hints after each save is stored.
 - Save links and notes quickly from inside the app.
 - Receive links and selected text from the Android share sheet.
 - Organize saves into baskets such as Inbox, Read Later, Ideas, Work, and Receipts.
 - Search locally across titles, text, URLs, domains, metadata, summaries, tags, and baskets.
 - Keep private saves hidden until the user chooses to show them.
-- Use QVAC as the on-device organizer for summaries, tags, and basket hints after each save is stored.
 
 ## Privacy Model
 
@@ -30,13 +30,13 @@ Stash is a private Android save-and-find app. It captures links, notes, copied t
 
 ## What Ships
 
+- QVAC SDK integration using `QWEN3_600M_INST_Q4`.
 - Android app built with Expo SDK 56 and React Native.
 - Local JSON store with a backup file and export action.
 - Empty first run with default baskets only; no demo saved items.
 - Android `ACTION_SEND text/plain` and `ACTION_PROCESS_TEXT` intake.
 - Copy support for saved item text.
 - Baskets, search, privacy toggles, export, reset, and on-device sorting status.
-- QVAC SDK integration using `QWEN3_600M_INST_Q4`.
 - CPU inference path with unused Vulkan/OpenCL native libraries excluded from the release APK.
 - Common project references in [`references/`](./references/README.md).
 

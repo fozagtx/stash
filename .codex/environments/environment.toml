@@ -1,7 +1,0 @@
-[actions.Run]
-command = "./script/build_and_run.sh"
-description = "Start Expo Metro for the FieldMeridian QVAC dev client."
-
-[actions."Run Android"]
-command = "./script/build_and_run.sh --android"
-description = "Start Expo Metro and open Android dev client."

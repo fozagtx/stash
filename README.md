@@ -2,6 +2,14 @@
 
 Stash is a private Android save-and-find app. It captures links, notes, copied text, receipt snippets, research fragments, and shared text from other apps, then keeps them searchable on the phone.
 
+## Screenshots
+
+<p align="center">
+  <img src="./references/screenshots/stash-library.png" alt="Stash library screen" width="31%" />&nbsp;&nbsp;
+  <img src="./references/screenshots/stash-search.png" alt="Stash search filters" width="31%" />&nbsp;&nbsp;
+  <img src="./references/screenshots/stash-detail.png" alt="Stash link detail screen" width="31%" />
+</p>
+
 ## Product Aim
 
 - Save links and notes quickly from inside the app.
